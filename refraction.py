@@ -7,6 +7,7 @@ Created on Thu Dec 15 19:32:03 2022
 """
 import copy
 from collections import defaultdict
+from typing import Dict, Tuple, List, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -15,40 +16,47 @@ import matplotlib.colors as mcolors
 from obspy.geodetics import gps2dist_azimuth
 
 
-def build_model(n_top, n_bottom, velocity):
+def build_raw_model(model_top: List[List], velocity: List) -> List[List]:
     """
     Build a model of layers from the given top and bottom depths and velocities.
 
     Args:
-        n_top (list of float): List of top depths of layers.
-        n_bottom (list of float): List of bottom depths of layers.
-        velocity (list of float): List of velocities for each layer.
+        model_top (List[List]): List of lists where each sublist contains top and bottom depths for a layer.
+        velocity (List): List of layer velocities.
 
     Returns:
-        list of list: Model with top, thickness, and velocity of each layer.
+        List[List]: List containing sublists where each sublist represents a layer with:
+            - The top depth of the layer (in km).
+            - The thickness of the layer (in km).
+            - The velocity of the layer (in km/s).
     """
-    MAX_DEPTH = -30000 # set max depth in meter (!!! depth marked with negative sign)
+    MAX_DEPTH = 3
     model = list()
-    lay = 0
-    for top, bottom in zip (n_top, n_bottom):
-        thick = bottom - top
-        model.append([top, thick, velocity[lay]])
-        lay+=1
-        if  bottom < MAX_DEPTH:
+    for layer, (top, bottom) in enumerate(model_top):
+        thick = (top - bottom)*1000
+        model.append([-1000*top, thick, velocity[layer]])
+        if  bottom > MAX_DEPTH:
             break
+            
     return model
 
-def upward_model (hypo_depth, sta_elev, model_raw):
+
+
+def upward_model (hypo_depth: float, sta_elev: float, model_raw: List[List]) -> List[List]:
     """
-    Build a model of layers for direct upward-refracted waves.
+    Build a modified model for direct upward-refracted waves from the raw model by evaluating 
+    the hypo depth and the station elevation.
 
     Args:
         hypo_depth(float) : Depth in meter (!!! depth marked with negative sign).
         sta_elev (float): Elevation of station
-        model_raw (nested list): Nested list, object resulted from build_model function.
+        model_raw (List[List]): List containing sublist where each sublist represents top depth, thickness, and velocity of each layer.
 
     Returns:
-        list of list: A nested list of modified raw models for direct upward refracted waves.
+        List[List] : List containing sublists where each sublist represents a modified layer with:
+            - The top depth of the layer (in km).
+            - The thickness of the layer (in km).
+            - The velocity of the layer (in km/s).
     """
     # correct upper model boundary and last layer thickness
     sta_pos = -1
@@ -69,20 +77,29 @@ def upward_model (hypo_depth, sta_elev, model_raw):
     else:
         modified_model[0][1] =  hypo_depth - sta_elev
     upward_model = modified_model
-    return upward_model
     
-def downward_model(hypo_depth, sta_elev, model_raw):
+    return upward_model
+ 
+
+ 
+def downward_model(hypo_depth: float, sta_elev: float, model_raw: List[List]) -> List[List]:
     """
-    Build a model of layers for downward refracted waves.
+    Build a modified model for downward critically refracted waves from the raw model by evaluating 
+    the hypo depth and the station elevation.
 
     Args:
         hypo_depth(float) : Depth in meter (!!! depth marked with negative sign).
         sta_elev (float): Elevation of station
-        model_raw (nested list): Nested list, object resulted from build_model function.
+        model_raw (List[List]): List containing sublist where each sublist represents top depth,
+                                thickness, and velocity of each layer.
 
     Returns:
-        list of list: A nested list of modified raw models for downward refracted waves.
+        List[List] : List containing sublists where each sublist represents a modified layer with:
+            - The top depth of the layer (in km).
+            - The thickness of the layer (in km).
+            - The velocity of the layer (in km/s).
     """
+    
     hypo_pos = -1
     for layer in model_raw:
         if layer[0] >= hypo_depth:
@@ -93,27 +110,33 @@ def downward_model(hypo_depth, sta_elev, model_raw):
         modified_model[0][1] = float(modified_model[1][0]) - hypo_depth
     downward_model = modified_model
     return downward_model
-    
+   
+   
 
-def up_refract (epi_dist, up_model, angles):
+def up_refract (epi_dist: float, 
+                up_model: List[List], 
+                angles: np.ndarray
+                ) -> Tuple[Dict[str, List], float]:
     """
-    Calculate the refracted angle (angle from the normal line), cumulative distance reached, and travel time
-    for all layers from the direct refracted waves.
+    Calculate the refracted angle (relative to the normal line), the cumulative distance traveled, 
+    and the total travel time for all layers based on the direct upward refracted wave.
 
     Args:
-        epi_dist (float): epicenter distance.
-        up_model (nested list): modified raw model resulted from upward_model function.
-        angle (numpy array): A numpy array of pre-defined angles for a grid search.
+        epi_dist (float): the Epicenter distance in m.
+        up_model (List[List]): List of sublists containing modified raw model results from the 'upward_model' function.
+        angles (np.ndarray): A numpy array of pre-defined angles for a grid search.
 
     Returns:
-        tuple: a dictionary of all direct upward refracted waves consisting of all refracted angles, cumulative distances, and travel-time
-        from each layer, the last take-off angle of the refracted angle reaches the station.
+        Tuple[Dict[str, List], float]:
+            - holder_up (Dict[str, List]): A dictionary of all direct upward refracted waves, 
+                containing refracted angles, cumulative distances, and travel times for each layer. 
+            - final_take_off (float): The final take-off angle of the refracted wave reaches the station.
         
     """
-    holder = defaultdict(dict)
-    last_take_off = str
+    holder_up = defaultdict(dict)
+    final_take_off = str
     for angle in angles:
-        holder[f"take_off_{angle}"]= {'refract_angle':[], 'distance':[], 'tt':[]}
+        holder_up[f"take_off_{angle}"]= {'refract_angle':[], 'distance':[], 'tt':[]}
         start_dist = 0
         angle_emit = angle
         for i,j in zip(range(1, len(up_model)+1), range(2, len(up_model)+2)):
@@ -123,31 +146,39 @@ def up_refract (epi_dist, up_model, angles):
             start_dist += dist
             if start_dist > epi_dist:
                 break
-            holder[f"take_off_{angle}"]['refract_angle'].append(angle_emit)
-            holder[f"take_off_{angle}"]['distance'].append(start_dist)
-            holder[f"take_off_{angle}"]['tt'].append(tt)
+            holder_up[f"take_off_{angle}"]['refract_angle'].append(angle_emit)
+            holder_up[f"take_off_{angle}"]['distance'].append(start_dist)
+            holder_up[f"take_off_{angle}"]['tt'].append(tt)
             try:
                 angle_emit = 180*(np.arcsin(np.sin(angle_emit*np.pi/180)*up_model[j][-1]/up_model[i][-1]))/np.pi 
             except IndexError:
                 break
         if start_dist > epi_dist:
             break
-        last_take_off = angle
-    return holder, last_take_off
+        final_take_off = angle
+    return holder_up, final_take_off
       
-def down_refract(epi_dist, up_model, down_model):
+      
+      
+def down_refract(epi_dist: float,
+                    up_model: List[List],
+                    down_model: List[List]
+                    ) -> Tuple[Dict[str, List], Dict[str, List]] :
     """
-    Calculate the downward refracted angle (angle from the normal line), cumulative distance reached, and travel time for all layers.
+    Calculate the refracted angle (relative to the normal line), the cumulative distance traveled, 
+    and the total travel time for all layers based on the downward critically refracted wave.
 
     Args:
-        epi_dist (float): epicenter distance.
-        up_model (nested list): modified raw model resulted from upward_model function.
-        down_model (nested list): modified raw model resulted from downward_model function.
+        epi_dist (float): the Epicenter distance in m.
+        up_model (List[List]): List of sublists containing modified raw model results from the 'upward_model' function.
+        down_model (List[List]): List of sublists containing modified raw model results from the 'downward_model' function.
 
     Returns:
-        tuple: dictionary consisted of imaginary upward refracted wave emitted from the same level of hypocenter (calculated with up_refract function),
-        dictionary consisted of all downward critically refracted waves.
-        
+        Tuple[Dict[str, List], Dict[str, List]]:
+            - holder_down (Dict[str, List]): A dictionary of all downward segments of critically refracted waves, 
+                containing refracted angles, cumulative distances, and travel times for each layer. 
+            - holder_up_seg (Dict[str, List]): A dictionary of all upward segments of downward critically refracted waves, 
+                containing refracted angles, cumulative distances, and travel times for each layer. 
     """
     half_dist = epi_dist/2
     # find all the critical angles in the model
@@ -177,7 +208,7 @@ def down_refract(epi_dist, up_model, down_model):
     angles.sort()
 
 
-    holder_up = defaultdict(dict)
+    holder_up_seg = defaultdict(dict)
     holder_down = defaultdict(dict)
     for angle in angles:
         start_dist = 0
@@ -202,10 +233,9 @@ def down_refract(epi_dist, up_model, down_model):
             elif emit_deg == 1:
                 angle_emit = 90
                 start_angle = holder_down[f"take_off_{angle}"]['refract_angle'][0]
-                angle_up_segment = []                  #function input must be in a list object
-                angle_up_segment.append(start_angle)
-                ray_up, last_take_off = up_refract(epi_dist, up_model, angle_up_segment)
-                holder_up.update(ray_up)
+                angle_up_segment =  np.array([start_angle])
+                ray_up, take_off_ = up_refract(epi_dist, up_model, angle_up_segment)
+                holder_up_seg.update(ray_up)
                 try:
                     dist_up = ray_up[f'take_off_{start_angle}']['distance'][-1]
                     dist_critical = (2*half_dist) - (2*start_dist) - dist_up   # total flat line length
@@ -221,9 +251,49 @@ def down_refract(epi_dist, up_model, down_model):
                 
             else:
                 break
-    return  holder_down, holder_up
+    return  holder_down, holder_up_seg
 
-def plot_rays (hypo_depth, sta_elev, velocity, base_model, up_model, down_model, reached_up_ref, c_ref, down_ref, down_up_ref, epi_dist):
+
+
+def plot_rays (hypo_depth: float, 
+                sta_elev: float,
+                velocity: List, 
+                base_model: List[List],
+                up_model: List[List],
+                down_model: List[List],
+                reached_up_ref: Dict[str, List],
+                c_ref: Dict[str, List],
+                down_ref: Dict[str, List],
+                down_up_ref: Dict[str, List],
+                epi_dist: float
+                ) -> None:
+    """
+    Plot the raw/base model, hypocenter, station, and the relative distance between the hypocenter and station
+    and also plot all waves that reach the station.
+
+    Args:
+        hypo_depth(float) : Depth in meter (!!! depth marked with negative sign).
+        sta_elev (float): Elevation of station
+        base_model (List[List]): List containing sublist where each sublist represents top depth, 
+            thickness, and velocity of each layer.
+        up_model (List[List]): List of sublists containing modified raw model results from the 'upward_model' function.
+        down_model (List[List]): List of sublists containing modified raw model results from the 'downward_model' function.
+        reached_up_ref (Dict[str, List]): A dictionary of a direct upward refracted wave that reaches the station
+            , containing refracted angles, cumulative distances, and travel times for each layer.
+        c_ref (Dict[str, List]): A dictionary of a direct upward refracted wave that reaches the station
+            , containing refracted angles, cumulative distances, and travel times for each layer.
+        
+        down_ref (Dict[str, List]): A dictionary of all downward segments of critically refracted waves, 
+            containing refracted angles, cumulative distances, and travel times for each layer.
+        down_up_ref (Dict[str, List]): A dictionary of all upward segments of downward critically refracted waves, 
+            containing refracted angles, cumulative distances, and travel times for each layer. 
+        epi_dist (float): the Epicenter distance in m.
+        
+    Returns:
+        None
+    """
+    
+    
     fig, axs = plt.subplots()
     
     # Define colormaps and normalization
@@ -308,16 +378,34 @@ def plot_rays (hypo_depth, sta_elev, velocity, base_model, up_model, down_model,
     
     return None
 
-def calculate_inc_angle(hypo, sta, model, plot_figure = True):
+def calculate_inc_angle(hypo: List,
+                        sta: List,
+                        model: List[List],
+                        velocity: List, 
+                        plot_figure: bool = False
+                        ) -> Tuple [float, float, float]:
+    """
+    Calculate the take-off angle, total travel-time and the incidence angle at the station for 
+    refracted angle using Snell's shooting method.
+
+    Args:
+        hypo (List): A list containing the latitude, longitude, and depth of the hypocenter (depth in negative notation).
+        sta (List): A list containing the latitude, longitude, and elevation of the station.
+        model (List[List]): List of list where each sublist contains top and bottom depths for a layer.
+        velocity (List): List of layer velocities.
+        plot_figure (bool): Whether to generate and save figures (default is False).
+        
+    Returns:
+        Tuple[float, float, float]: take-off angle, total travel time and incidence angle.
+    """
     ANGLE_RESOLUTION = np.linspace(0, 90, 1000) # set grid resolution for direct upward refracted wave
     # initialize hypocenter, station, model, and calculate the epicentral distance
     [hypo_lat,hypo_lon, depth] = hypo
     [sta_lat, sta_lon, elev] = sta
-    [top, bottom, velocity] = model
     epicentral_distance, azimuth, back_azimuth = gps2dist_azimuth(hypo_lat, hypo_lon, sta_lat, sta_lon)
     
     # build a raw model
-    model_raw = build_model(top, bottom, velocity)
+    model_raw = build_raw_model(model, velocity)
     
     # deep copy the model (original copy is  needed for plotting)
     model_copied = copy.deepcopy(model_raw)
@@ -326,11 +414,11 @@ def calculate_inc_angle(hypo, sta, model, plot_figure = True):
     down_model = downward_model(depth, elev, model_copied_2)
     
     #  start calculating all refracted waves for all layers they may propagate through
-    up_ref, last_take_off = up_refract(epicentral_distance, up_model, ANGLE_RESOLUTION)
+    up_ref, final_take_off = up_refract(epicentral_distance, up_model, ANGLE_RESOLUTION)
     down_ref, down_up_ref = down_refract(epicentral_distance, up_model, down_model)
     
     # result from direct upward refracted wave only
-    last_ray = up_ref[f"take_off_{last_take_off}"]
+    last_ray = up_ref[f"take_off_{final_take_off}"]
     take_off_upward_refract = 180 - last_ray['refract_angle'][0]
     upward_refract_tt = np.sum(last_ray['tt'])
     reach_distance = last_ray['distance'][-1] # -1 index since distance is cumulative value
@@ -382,7 +470,7 @@ def calculate_inc_angle(hypo, sta, model, plot_figure = True):
         total_travel = upward_refract_tt
         incidence_angle = upward_incidence_angle
 
-    # if plot image statement is true    
+    # If plot image statement is true    
     if plot_figure:
         plot_rays(depth, elev, velocity, model_raw, up_model, down_model, last_ray, c_refract, down_ref, down_up_ref, epicentral_distance)
 
@@ -433,15 +521,14 @@ def calculate_inc_angle(hypo, sta, model, plot_figure = True):
 if __name__ == "__main__" :
     # Parameters
     # model parameters (list of list, consisting of top, bottom boundaries, and velocity (P phase in km/s)
-    model_raw = [
-    [3000, 1900, 590, -220, -2500, -7000, -9000, -15000, -33000],
-    [1900, 590, -220, -2500, -7000, -9000, -15000, -33000, -99999],
-    [2.68, 2.99, 3.95, 4.50, 4.99, 5.60, 5.80, 6.40, 8.00]
+    model_top = [
+                    [-3.00, -1.90], [-1.90, -0.59], [-0.59, 0.22], [0.22, 2.50], [2.50, 7.00], [7.00, 9.00], [9.00, 15.00], [15.00, 33.00], [33.00, 99999.00] 
     ]
+    velocity_P = [2.68, 2.99, 3.95, 4.50, 4.99, 5.60, 5.80, 6.40, 8.00]
     
     # hypo and station
     hypo_test = [37.916973, 126.651613, 200]
     sta = [ 37.916973, 126.700882, 2200]
     
     # call the function to start the calculation
-    ray_inc = calculate_inc_angle(hypo_test, sta, model_raw)
+    ray_inc = calculate_inc_angle(hypo_test, sta, model_top, velocity_P, plot_figure = True)
