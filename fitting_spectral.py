@@ -192,7 +192,33 @@ def fit_spectrum_stochastic (frequencies: np.ndarray,
     
     
     
-def fit_spectrum_bayes_opt (frequencies, spectrums, traveltime, f_min, f_max):
+def fit_spectrum_bayes_opt (frequencies: np.ndarray,
+                                spectrums: np.ndarray,
+                                traveltime: float,
+                                f_min: float,
+                                f_max: float
+                                ) -> Tuple[float, float, float, float, np.ndarray, np.ndarray]:
+    """
+    A Probabilistic parameter optimization process using bayesian optimization to obtain the best-fitting model for the observed spectrum.
+    
+    Args:
+        frequencies (np.ndarray): Array of frequency values.
+        omega_0 (float): Value of the omega zero (spectral flat level).
+        Q (float): Quality factor for amplitude attenuation.
+        corner_frequency (float): The corner frequency.
+        traveltime(float): Value of the phase travel time.
+        f_min (float): Minimum frequency of the band to be calculated.
+        f_max (float): Maximum frequency of the band to be calculated.
+        
+    Returns:
+        Tuple[float, float, float, float, np.ndarray, np.ndarray]:
+            - omega_0_fit: The optimized value of omega 0 (spectral flat level) obtained from fitting the model.
+            - q_factor_fit: The optimized value of quality factor obtained from fitting the model.
+            - f_c_fit: The optimized value of frequency corner obtained from fitting the model.
+            - best_rms_e : The best rms value obtained from model fitting process.
+            - x_tuned : Array of frequencies in spesific resolution and frequencies band.
+            - y_tuned: Array of spectrum computed from the model equation using optimized variable.
+    """
     # windowing frequencies and spectrum within f band    
     freq, spectrum = window_band(frequencies, spectrums, f_min, f_max)
 
@@ -219,14 +245,14 @@ def fit_spectrum_bayes_opt (frequencies, spectrums, traveltime, f_min, f_max):
     result = gp_minimize(objective, space, n_calls = 15, random_state = 42)
     
     # extract the best parameters and result
-    omega_0_best, Q_factor_best, f_c_best = result.x
-    best_error = result.fun
+    omega_0_fit, Q_factor_fit, f_c_fit = result.x
+    best_rms_e = result.fun
     
     # calculate the fitted power spectral density from tuned parameter
     x_tuned = np.linspace(0.75, 100, 100)
-    y_tuned = calculate_source_spectrum(x_tuned, omega_0_best, Q_factor_best, f_c_best, traveltime) 
+    y_tuned = calculate_source_spectrum(x_tuned, omega_0_fit, Q_factor_fit, f_c_fit, traveltime) 
                     
-    return omega_0_best, Q_factor_best, f_c_best, best_error, x_tuned, y_tuned
+    return omega_0_fit, Q_factor_fit, f_c_fit, best_rms_e, x_tuned, y_tuned
 
 
 if __name__ == "__main__":
