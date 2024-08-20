@@ -227,37 +227,6 @@ def fit_spectrum_bayes_opt (frequencies, spectrums, traveltime, f_min, f_max):
     y_tuned = calculate_source_spectrum(x_tuned, omega_0_best, Q_factor_best, f_c_best, traveltime) 
                     
     return omega_0_best, Q_factor_best, f_c_best, best_error, x_tuned, y_tuned
-    
-# # fitting spectrum function using levenberg-marquardt algorithm
-# def fit_spectrum_first(spectrum, frequencies, traveltime, initial_omega_0,
-    # initial_f_c):
-    # """
-    # Fit a theoretical source spectrum to a measured source spectrum.
-    # Uses a Levenburg-Marquardt algorithm.
-    # :param spectrum: The measured source spectrum.
-    # :param frequencies: The corresponding frequencies.
-    # :para traveltime: Event traveltime in [s].
-    # :param initial_omega_0: Initial guess for Omega_0.
-    # :param initial_f_c: Initial guess for the corner frequency.
-    # :param initial_q: initial quality factor
-    # :returns: Best fits and standard deviations.
-        # (Omega_0, f_c, Omega_0_std, f_c_std)
-        # Returns None, if the fit failed.
-    # """
-    # def f(frequencies, omega_0, f_c):
-        # return calculate_source_spectrum(frequencies, omega_0, f_c,
-                # Qfactor, traveltime)
-    # popt, pcov = scipy.optimize.curve_fit(f, frequencies, spectrum, \
-        # p0=list([initial_omega_0, initial_f_c]), maxfev=100000)        # maxfev is the maximum number of function calls allowed during the optimization
-    # # p0 is the initial guest that will be optimized by the fit method
-    # # popt is the optimezed parameters and the pcov is the covariance matrix
-    
-    # x_fit=frequencies
-    # y_fit= f(x_fit, *popt)
-    
-    # if popt is None:
-        # return None
-    # return popt[0], popt[1], pcov[0, 0], pcov[1, 1], x_fit,y_fit
 
 
 if __name__ == "__main__":

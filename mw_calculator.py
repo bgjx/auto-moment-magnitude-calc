@@ -22,7 +22,7 @@ from obspy.signal import rotate
 from obspy.geodetics import gps2dist_azimuth
 
 import refraction as ref
-import hypertuning as hype
+import fitting_spectral as fit
 
 warnings.filterwarnings('ignore')
 
@@ -561,9 +561,9 @@ def calculate_moment_magnitude(
         
         # fitting the spectrum, find the optimal value of Omega_O, corner frequency and Q using grid search algorithm
         try:
-            fit_P = hype.fit_spectrum_stochastic(freq_P, spec_P, abs(float(P_pick_time - origin_time)), f_min, f_max)
-            fit_SV = hype.fit_spectrum_stochastic(freq_SV, spec_SV, abs(float(S_pick_time - origin_time)), f_min, f_max)
-            fit_SH= hype.fit_spectrum_stochastic(freq_SH, spec_SH, abs(float(S_pick_time - origin_time)), f_min, f_max)
+            fit_P = fit.fit_spectrum_stochastic(freq_P, spec_P, abs(float(P_pick_time - origin_time)), f_min, f_max)
+            fit_SV = fit.fit_spectrum_stochastic(freq_SV, spec_SV, abs(float(S_pick_time - origin_time)), f_min, f_max)
+            fit_SH= fit.fit_spectrum_stochastic(freq_SH, spec_SH, abs(float(S_pick_time - origin_time)), f_min, f_max)
         except Exception as e:
             logger.exception(f"Error during spectral fitting: {e}")
             continue
