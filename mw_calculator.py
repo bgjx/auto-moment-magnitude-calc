@@ -52,8 +52,8 @@ NOISE_DURATION = 0.5
 NOISE_PADDING = 0.2
 
 # setting frequency range for spectral fitting (default spectral f-band frequency range)
-f_min = 0.75
-f_max = 25
+F_MIN = 0.75
+F_MAX = 25
 
 
 def start_calculate(
@@ -561,9 +561,9 @@ def calculate_moment_magnitude(
         
         # fitting the spectrum, find the optimal value of Omega_O, corner frequency and Q using grid search algorithm
         try:
-            fit_P = fit.fit_spectrum_stochastic(freq_P, spec_P, abs(float(P_pick_time - origin_time)), f_min, f_max)
-            fit_SV = fit.fit_spectrum_stochastic(freq_SV, spec_SV, abs(float(S_pick_time - origin_time)), f_min, f_max)
-            fit_SH= fit.fit_spectrum_stochastic(freq_SH, spec_SH, abs(float(S_pick_time - origin_time)), f_min, f_max)
+            fit_P = fit.fit_spectrum_stochastic(freq_P, spec_P, abs(float(P_pick_time - origin_time)), F_MIN, F_MAX)
+            fit_SV = fit.fit_spectrum_stochastic(freq_SV, spec_SV, abs(float(S_pick_time - origin_time)), F_MIN, F_MAX)
+            fit_SH= fit.fit_spectrum_stochastic(freq_SH, spec_SH, abs(float(S_pick_time - origin_time)), F_MIN, F_MAX)
         except Exception as e:
             logger.exception(f"Error during spectral fitting: {e}")
             continue
