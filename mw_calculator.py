@@ -469,8 +469,8 @@ def calculate_moment_magnitude(
     k_P = 0.32 # kappa parameter for P phase
     k_S = 0.21 # kappa parameter for S phase
     LAYER_TOP   = [ [-2,0],[0, 1.2],[1.2, 6.1], [6.1, 14.1], [14.1,9999] ]
-    VELOCITY_VP = [3.82, 4.50, 4.60, 6.20, 8.00]                                      # km/s
-    VELOCITY_VS = [2.30, 2.53, 2.53, 3.44, 4.44]                                      # km/s
+    VELOCITY_VP = [3.82, 4.50, 4.60, 6.20, 8.00]                                    # km/s
+    VELOCITY_VS = [2.30, 2.53, 2.53, 3.44, 4.44]                                    # km/s
     DENSITY     = [ 2375.84,  2465.34, 2529.08, 2750.80, 2931.80]                   # kg/m3
     
     moments, corner_frequencies, source_radius = [], [], []
