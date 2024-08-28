@@ -58,12 +58,12 @@ F_MAX = 25
 
 def start_calculate(
         wave_path: Path,
-        hypo_path: path,
+        hypo_path: Path,
         sta_path: Path, 
         pick_path: Path, 
         cal_path: Path,
         fig_path: Path
-        ) ->  Tuple [pd.Dataframe, pd.Dataframe]:
+        ) ->  Tuple [pd.DataFrame, pd.DataFrame, str]:
 
     """
     Start the process of moment magnitude calculation.
@@ -77,7 +77,7 @@ def start_calculate(
         fig_path (Path): Path to the directory where the image of the result of spectral fitting will be stored.
         
     Returns:
-        Tuple [pd.Dataframe, pd.DataFrame]: DataFrames for magnitude results and fitting results.
+        Tuple [pd.Dataframe, pd.DataFrame, str]: DataFrames for magnitude results and fitting results, and the output file name.
     """
         
     prompt=str(input('Please type yes/no if you had changed the path :'))
@@ -91,8 +91,8 @@ def start_calculate(
     logger.add("runtime.log", level="ERROR", backtrace=True, diagnose=True)
     
     # Get the user input.
-    id_start, id_end, fig_state = get_user_input()
-
+    id_start, id_end, mw_output, fig_state = get_user_input()
+    
     # loading file input
     hypo_data    = pd.read_excel(hypo_path, index_col = None) 
     pick_data    = pd.read_excel(pick_path, index_col = None)
@@ -131,11 +131,11 @@ def start_calculate(
             logger.exception(f"An error occured during calculation for event {_id}: {e}")
             pass
     
-    return df_result, df_fitting
+    return df_result, df_fitting, mw_output
 
 
 
-def get_user_input () -> Tuple[int, int, bool]:
+def get_user_input () -> Tuple[int, int, str, bool]:
     """
     Get user inputs for processing parameters.
     
@@ -145,15 +145,16 @@ def get_user_input () -> Tuple[int, int, bool]:
     
     id_start    = int(input("Event's ID to start the moment magnitude calculation : "))
     id_end      = int(input("Event's ID to end the moment magnitude calculation : "))
-    fig_state   = input("Do you want to produce the spectral fitting image [yes/no]?: ").strip().lower() == 'yes'
+    mw_output   = str(input("Please input your desired moment magnitude calculation output name (ex. mw_out): "))
+    fig_state   = input("Do you want to produce the spectral fitting image [yes/no]?: ")
     
     # check status image builder
-    if fig_state== 'yes':
+    if fig_state == 'yes':
         fig_state = True
     else:
         fig_state = False
         
-    return id_start, id_end, fig_state
+    return id_start, id_end, mw_output, fig_state
 
 
 
@@ -170,7 +171,7 @@ def read_waveforms(path: Path, event_id: str) -> Stream:
     """
     
     stream = Stream()
-    for w in glob.glob(os.path.join(path.joinpath(event_id), '*.mseed'), recursive = True):
+    for w in glob.glob(os.path.join(path.joinpath(f"{event_id}"), '*.mseed'), recursive = True):
         try:
             stread = read(w)
             stream += stread
@@ -248,7 +249,7 @@ def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[st
             inv_path = calibration_path.joinpath(f"RESP.ML.{sta}..BH{comp}")
             
             # Read the calibration file
-            inv = dsread_inventory(inv_path, format='RESP')
+            inv = read_inventory(inv_path, format='RESP')
   
             # Prepare plot path if fig_statement is True
             plot_path = None
@@ -259,7 +260,7 @@ def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[st
             rtr = tr.remove_response(
             inventory = inv,
             pre_filt = PRE_FILTER,
-            WATER_LEVEL = WATER_LEVEL,
+            water_level = WATER_LEVEL,
             output = 'DISP',
             zero_mean = True,
             taper = True,
@@ -468,7 +469,7 @@ def calculate_moment_magnitude(
     R_PATTERN_S = 0.600 # S phase radiation pattern
     k_P = 0.32 # kappa parameter for P phase
     k_S = 0.21 # kappa parameter for S phase
-    LAYER_TOP   = [ [-2,0],[0, 1.2],[1.2, 6.1], [6.1, 14.1], [14.1,9999] ]
+    LAYER_TOP   = [ [-2.0,0.0],[0.0, 1.2],[1.2, 6.1], [6.1, 14.1], [14.1,9999] ]
     VELOCITY_VP = [3.82, 4.50, 4.60, 6.20, 8.00]                                    # km/s
     VELOCITY_VS = [2.30, 2.53, 2.53, 3.44, 4.44]                                    # km/s
     DENSITY     = [ 2375.84,  2465.34, 2529.08, 2750.80, 2931.80]                   # kg/m3
@@ -494,15 +495,15 @@ def calculate_moment_magnitude(
     # Get hypocenter details
     origin_time = UTCDateTime(f"{hypo_df.Year.iloc[0]}-{int(hypo_df.Month.iloc[0]):02d}-{int(hypo_df.Day.iloc[0]):02d}T{int(hypo_df.Hour.iloc[0]):02d}:{int(hypo_df.Minute.iloc[0]):02d}:{float(hypo_df.T0.iloc[0]):012.9f}") 
     hypo_lat, hypo_lon , hypo_depth =  hypo_df.Lat.iloc[0], hypo_df.Lon.iloc[0], hypo_df.Depth.iloc[0]
-    
+
     # Find the correct velocity and DENSITY value for the spesific layer depth
     for layer, (top, bottom) in enumerate(LAYER_TOP):
         if (top*1000)   <= hypo_depth <= (bottom*1000):
             velocity_P = VELOCITY_VP[layer]*1000  # velocity in m/s
             velocity_S = VELOCITY_VS[layer]*1000  # velocity in m/s
             DENSITY_value = DENSITY[layer]
-        else:
-            raise ValueError ("Hypo depth not within the defined layers.")
+    if not velocity_P:
+        raise ValueError ("Hypo depth not within the defined layers.")
 
     # Read waveforms
     stream = read_waveforms(wave_path, event_id)
@@ -530,6 +531,7 @@ def calculate_moment_magnitude(
         )
 
         st2 = st.select(station = sta) # Select spesific seismograms from the stream
+
         if len(st2) < 3:
             logger.warning(f"Not all components available for station {sta}")
             continue
@@ -539,7 +541,7 @@ def calculate_moment_magnitude(
         sta_ref = [sta_lat, sta_lon, sta_elev]
         take_off, total_tt, inc_angle = ref.calculate_inc_angle(hypo_ref, sta_ref, LAYER_TOP, VELOCITY_VP) # Calculate the incidence angle at station
         st_rotated = rotate_component(st_removed, azimuth, inc_angle) # do the component rotation from ZNE to LQT
-
+        
         # Window the trace
         p_window_data, sv_window_data, sh_window_data, noise_window_data = window_trace(st_rotated, P_pick_time, S_pick_time)
         
@@ -788,17 +790,17 @@ def calculate_moment_magnitude(
 
 if __name__ == "__main__" :
     # initialize input and output path
-    wave_path       = Path(r"E:\SEML\DATA TRIMMING\EVENT DATA TRIM\ALL COMBINED")                           # trimmed waveform location
-    hypo_input      = Path(r"E:\SEML\CATALOG HYPOCENTER\catalog\hypo_reloc.xlsx")                           # relocated catalog
-    sta_input       = Path(r"E:\SEML\STATION AND VELOCITY DATA\SEML_station.xlsx")                          # station file
-    pick_input      = Path(r"E:\SEML\CATALOG HYPOCENTER\catalog\catalog_picking.xlsx")                      # catalog picking
-    calibration     = Path(r"E:\SEML\SEISMOMETER INSTRUMENT CORRECTION\CALIBRATION")                        # calibration file
-    mw_result       = Path(r"E:\SEML\MAGNITUDE CALCULATION\MW")                                             # mw result location
-    fig_output      = Path(r"E:\SEML\MAGNITUDE CALCULATION\MW\fig_out")                                     # saved figure location
+    wave_path       = Path(r"G:\SEML\DATA TRIMMING\EVENT DATA TRIM\ALL COMBINED")                           # trimmed waveform location
+    hypo_input      = Path(r"G:\SEML\CATALOG HYPOCENTER\catalog\hypo_reloc.xlsx")                           # relocated catalog
+    sta_input       = Path(r"G:\SEML\STATION AND VELOCITY DATA\SEML_station.xlsx")                          # station file
+    pick_input      = Path(r"G:\SEML\CATALOG HYPOCENTER\catalog\catalog_picking.xlsx")                      # catalog picking
+    calibration     = Path(r"G:\SEML\SEISMOMETER INSTRUMENT CORRECTION\CALIBRATION")                        # calibration file
+    mw_result       = Path(r"G:\SEML\MAGNITUDE CALCULATION\MW")                                             # mw result location
+    fig_output      = Path(r"G:\SEML\MAGNITUDE CALCULATION\MW\fig_out")                                     # saved figure location
     
     # Call the function to start calculating moment magnitude
-    mw_result_df, mw_fitting_df = start_calculate(wave_path, hypo_input, sta_input, pick_input, calibration, fig_output)
+    mw_result_df, mw_fitting_df, output_name = start_calculate(wave_path, hypo_input, sta_input, pick_input, calibration, fig_output)
 
     # save and set dataframe index
-    mw_result_df.to_excel(mw_result.joinpath(f"{mw_output}_result.xlsx"), index = False)
-    mw_fitting_df.to_excel(mw_result.joinpath(f"{mw_output}_fitting_result.xlsx"), index = False)
+    mw_result_df.to_excel(mw_result.joinpath(f"{output_name}_result.xlsx"), index = False)
+    mw_fitting_df.to_excel(mw_result.joinpath(f"{output_name}_fitting_result.xlsx"), index = False)

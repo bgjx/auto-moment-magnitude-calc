@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on  Fri Dec 15 19:32:03 2023
+
+@author : ARHAM ZAKKI EDELO
+@contact: edelo.arham@gmail.com
+"""
+
 from typing import Dict, Tuple, List, Optional
 import numpy as np
 from skopt import gp_minimize
