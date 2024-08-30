@@ -182,51 +182,6 @@ def read_waveforms(path: Path, event_id: str) -> Stream:
 
 
 
-def rotate_component(st: Stream, azim: float, inc: float) -> Stream  :
-    """
-    Rotates a stream of seismic traces from the ZNE (Vertical-North-East) component system
-    to the LQT (Longitudinal-Transverse-Vertical) component system based on given azimuth
-    and inciddence angles.
-
-    Args:
-        st (Stream): A Stream object containing the Z, N, and E components as traces.
-        azim (float): The azimuth angle (in degrees) for rotation.
-        inc (float): The inciddence angle (in degrees) for rotation.
-
-    Returns:
-        Stream: A Stream object containing the rotated L, Q, and T components as traces.
-    """
-    
-    # Create an empty Stream object to hold the rotated traces
-    sst_rotated = Stream()
-    
-    # Extract the traces and their metadata
-    tr_Z = st.select(component='Z')[0]
-    tr_L_status = tr_Z.stats
-    
-    tr_N = st.select(component='N')[0]
-    tr_T_status = tr_N.stats
-    
-    tr_E = st.select(component='E')[0]
-    tr_Q_status = tr_E.stats
-    
-    # Perform the rotation using the provided azimuth and inclination
-    tr_L_data, tr_Q_data, tr_T_data = rotate.rotate_zne_lqt(tr_Z.data, tr_N.data, tr_E.data, azim, inc)
-    
-    # Convert numpy ndarrays to Trace objects and update their metadata
-    tr_L = Trace(tr_L_data, header = tr_L_status)
-    tr_L.stats.component = 'L'
-    tr_Q = Trace(tr_Q_data, header = tr_Q_status)
-    tr_Q.stats.component = 'Q'
-    tr_T = Trace(tr_T_data, header = tr_T_status)
-    tr_T.stats.component = 'T'
-
-    # Add the rotated traces to the Stream
-    sst_rotated.extend([tr_L, tr_Q, tr_T])
-    return sst_rotated
-
-
-
 def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[str] = None, fig_statement: bool = False) -> Stream:
     """
     Removes instrument response from a Stream of seismic traces using calibration files.
@@ -279,9 +234,54 @@ def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[st
             continue
             
     return st_removed
+    
+    
+    
+def rotate_component(st: Stream, azim: float, inc: float) -> Stream  :
+    """
+    Rotates a stream of seismic traces from the ZNE (Vertical-North-East) component system
+    to the LQT (Longitudinal-Transverse-Vertical) component system based on given azimuth
+    and inciddence angles.
 
+    Args:
+        st (Stream): A Stream object containing the Z, N, and E components as traces.
+        azim (float): The azimuth angle (in degrees) for rotation.
+        inc (float): The inciddence angle (in degrees) for rotation.
 
+    Returns:
+        Stream: A Stream object containing the rotated L, Q, and T components as traces.
+    """
+    
+    # Create an empty Stream object to hold the rotated traces
+    sst_rotated = Stream()
+    
+    # Extract the traces and their metadata
+    tr_Z = st.select(component='Z')[0]
+    tr_L_status = tr_Z.stats
+    
+    tr_N = st.select(component='N')[0]
+    tr_T_status = tr_N.stats
+    
+    tr_E = st.select(component='E')[0]
+    tr_Q_status = tr_E.stats
+    
+    # Perform the rotation using the provided azimuth and inclination
+    tr_L_data, tr_Q_data, tr_T_data = rotate.rotate_zne_lqt(tr_Z.data, tr_N.data, tr_E.data, azim, inc)
+    
+    # Convert numpy ndarrays to Trace objects and update their metadata
+    tr_L = Trace(tr_L_data, header = tr_L_status)
+    tr_L.stats.component = 'L'
+    tr_Q = Trace(tr_Q_data, header = tr_Q_status)
+    tr_Q.stats.component = 'Q'
+    tr_T = Trace(tr_T_data, header = tr_T_status)
+    tr_T.stats.component = 'T'
 
+    # Add the rotated traces to the Stream
+    sst_rotated.extend([tr_L, tr_Q, tr_T])
+    return sst_rotated
+    
+    
+    
 def window_trace(tr: Trace, P_arr: float, S_arr: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Windows seismic trace data around P, SV, and SH phase and extracts noise data.
