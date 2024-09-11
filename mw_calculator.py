@@ -787,8 +787,7 @@ def calculate_moment_magnitude(
     
     return results, fitting_result
 
-
-if __name__ == "__main__" :
+def main():
     # initialize input and output path
     wave_path       = Path(r"G:\SEML\DATA TRIMMING\EVENT DATA TRIM\ALL COMBINED")                           # trimmed waveform location
     hypo_input      = Path(r"G:\SEML\CATALOG HYPOCENTER\catalog\hypo_reloc.xlsx")                           # relocated catalog
@@ -804,3 +803,8 @@ if __name__ == "__main__" :
     # save and set dataframe index
     mw_result_df.to_excel(mw_result.joinpath(f"{output_name}_result.xlsx"), index = False)
     mw_fitting_df.to_excel(mw_result.joinpath(f"{output_name}_fitting_result.xlsx"), index = False)
+    
+    return None
+
+if __name__ == "__main__" :
+    main()
