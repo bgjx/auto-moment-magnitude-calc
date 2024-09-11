@@ -516,6 +516,7 @@ def calculate_inc_angle(hypo: List,
     return takeoff, total_travel, incidence_angle
     
     
+    
 def main():
     # model parameters (list of list, consisting of top, bottom boundaries, and velocity (P phase in km/s)
     model_top = [
@@ -529,6 +530,8 @@ def main():
     
     # call the function to start the calculation
     return calculate_inc_angle(hypo_test, sta, model_top, velocity_P, plot_figure = True)
+        
+        
         
 if __name__ == "__main__" :
     main()
