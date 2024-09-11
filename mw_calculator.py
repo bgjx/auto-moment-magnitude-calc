@@ -787,6 +787,8 @@ def calculate_moment_magnitude(
     
     return results, fitting_result
 
+
+
 def main():
     # initialize input and output path
     wave_path       = Path(r"G:\SEML\DATA TRIMMING\EVENT DATA TRIM\ALL COMBINED")                           # trimmed waveform location
@@ -805,6 +807,8 @@ def main():
     mw_fitting_df.to_excel(mw_result.joinpath(f"{output_name}_fitting_result.xlsx"), index = False)
     
     return None
+
+
 
 if __name__ == "__main__" :
     main()

@@ -514,12 +514,9 @@ def calculate_inc_angle(hypo: List,
             print("\nNo critically refracted rays reach the station are available....")
 
     return takeoff, total_travel, incidence_angle
-
-# End of functions 
-#============================================================================================
-
-if __name__ == "__main__" :
-    # Parameters
+    
+    
+def main():
     # model parameters (list of list, consisting of top, bottom boundaries, and velocity (P phase in km/s)
     model_top = [
                     [-3.00, -1.90], [-1.90, -0.59], [-0.59, 0.22], [0.22, 2.50], [2.50, 7.00], [7.00, 9.00], [9.00, 15.00], [15.00, 33.00], [33.00, 99999.00] 
@@ -531,4 +528,7 @@ if __name__ == "__main__" :
     sta = [ 37.916973, 126.700882, 2200]
     
     # call the function to start the calculation
-    ray_inc = calculate_inc_angle(hypo_test, sta, model_top, velocity_P, plot_figure = True)
+    return calculate_inc_angle(hypo_test, sta, model_top, velocity_P, plot_figure = True)
+        
+if __name__ == "__main__" :
+    main()

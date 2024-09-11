@@ -264,5 +264,12 @@ def fit_spectrum_bayes_opt (frequencies: np.ndarray,
     return omega_0_fit, Q_factor_fit, f_c_fit, best_rms_e, x_tuned, y_tuned
 
 
+
+def main():
+    print("Put the test code here")
+    return None
+    
+    
+    
 if __name__ == "__main__":
-    print("test")
+    main()
