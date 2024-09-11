@@ -143,9 +143,9 @@ def get_user_input () -> Tuple[int, int, str, bool]:
         Tuple[int, int, str, bool]: Start ID, end ID, output name, and whether to generate figures.
     """
     
-    id_start    = int(input("Event's ID to start the moment magnitude calculation : "))
-    id_end      = int(input("Event's ID to end the moment magnitude calculation : "))
-    mw_output   = str(input("Please input your desired moment magnitude calculation output name (ex. mw_out): "))
+    id_start    = int(input("Event ID to start the moment magnitude calculation : "))
+    id_end      = int(input("Event ID to end the moment magnitude calculation : "))
+    mw_output   = str(input("Result file name? (ex. mw_out): "))
     fig_state   = input("Do you want to produce the spectral fitting image [yes/no]?: ")
     
     # check status image builder
