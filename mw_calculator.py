@@ -88,6 +88,7 @@ def start_calculate(
         pass
 
     # setting logger for debugging 
+    logger.remove()
     logger.add("runtime.log", level="ERROR", backtrace=True, diagnose=True)
     
     # Get the user input.
@@ -128,7 +129,7 @@ def start_calculate(
             df_fitting = pd.concat([df_fitting, mw_fitting_result], ignore_index = True)
             
         except Exception as e:
-            logger.exception(f"An error occured during calculation for event {_id}: {e}")
+            logger.error(f"An error occured during calculation for event {_id}: {e}")
             pass
     
     return df_result, df_fitting, mw_output
@@ -176,7 +177,7 @@ def read_waveforms(path: Path, event_id: str) -> Stream:
             stread = read(w)
             stream += stread
         except Exception as e:
-            logger.error(f"Error reading waveform {w}: {e}")
+            logger.error(f"Error reading waveform {w} for event {event_id}: {e} ")
     
     return stream
 
@@ -230,7 +231,7 @@ def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[st
             st_removed+=rtr
             
         except Exception as e:
-            print(f"Error processing trace {tr.id}: {e}")
+            logger.error(f"Error process instrument removal in trace {tr.id}: {e}")
             continue
             
     return st_removed
@@ -461,7 +462,7 @@ def calculate_moment_magnitude(
             axs[0,1].set_title("Spectra Fitting Profile", fontsize='20')
             counter = 0
         except Exception as e:
-            logger.error(f"Error creating figures: {e}")
+            logger.error(f"Error initializing figures for event {event_id}: {e}")
             fig_statement = False
     
     # Predefined parameters 
@@ -533,7 +534,7 @@ def calculate_moment_magnitude(
         st2 = st.select(station = sta) # Select spesific seismograms from the stream
 
         if len(st2) < 3:
-            logger.warning(f"Not all components available for station {sta}")
+            logger.warning(f"Not all components available for station {sta} to calculate event {event_id} moment magnitude")
             continue
             
         st_removed = instrument_remove(st2, calibration_path, fig_path) # Remove instrument response
@@ -547,7 +548,7 @@ def calculate_moment_magnitude(
         
         # Check the data quality (SNR must be above or equal to 1)
         if any(trace_snr(data, noise_window_data) <= 1 for data in [p_window_data, sv_window_data, sh_window_data]):
-            logger.warning(f"SNR below threshold for station {sta}")
+            logger.warning(f"SNR below threshold for station {sta} to calculate moment magnitude")
             continue
             
         # check sampling rate
@@ -567,7 +568,7 @@ def calculate_moment_magnitude(
             fit_SV = fit.fit_spectrum_stochastic(freq_SV, spec_SV, abs(float(S_pick_time - origin_time)), F_MIN, F_MAX)
             fit_SH= fit.fit_spectrum_stochastic(freq_SH, spec_SH, abs(float(S_pick_time - origin_time)), F_MIN, F_MAX)
         except Exception as e:
-            logger.exception(f"Error during spectral fitting: {e}")
+            logger.error(f"Error during spectral fitting for event {event_id}: {e}")
             continue
 
         if None in [fit_SV, fit_SH, fit_P]:
@@ -708,7 +709,7 @@ def calculate_moment_magnitude(
 
                 counter +=3
             except Exception as e:
-                logger.exception(f"Failed to plot the fitting spectral: {e}") 
+                logger.error(f"Failed to plot the fitting spectral for event {event_id} : {e}") 
 
         # calculate the moment magnitude
         try:
@@ -740,7 +741,7 @@ def calculate_moment_magnitude(
             source_radius.extend([r_P, r_S])        
      
         except Exception as e:
-            logger.exception(f"Failed to calculate seismic moment: {e}")
+            logger.error(f"Failed to calculate seismic moment for event {event_id} : {e}")
             continue
             
     # Calculate the seismic moment viabnv  basic statistics.
