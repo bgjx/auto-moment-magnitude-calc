@@ -24,7 +24,7 @@ from obspy.geodetics import gps2dist_azimuth
 import refraction as ref
 import fitting_spectral as fit
 
-warnings.filterwarnings('ignore')
+#warnings.filterwarnings('ignore')
 
 print('''
 Python code to calculate moment magnitude
@@ -53,7 +53,7 @@ NOISE_PADDING = 0.2
 
 # setting frequency range for spectral fitting (default spectral f-band frequency range)
 F_MIN = 0.75
-F_MAX = 25
+F_MAX = 30
 
 
 def start_calculate(
@@ -89,7 +89,7 @@ def start_calculate(
 
     # setting logger for debugging 
     logger.remove()
-    logger.add("runtime.log", level="ERROR", backtrace=True, diagnose=True)
+    logger.add("runtime.log", level="WARNING", backtrace=True, diagnose=True)
     
     # Get the user input.
     id_start, id_end, mw_output, fig_state = get_user_input()
@@ -129,8 +129,9 @@ def start_calculate(
             df_fitting = pd.concat([df_fitting, mw_fitting_result], ignore_index = True)
             
         except Exception as e:
-            logger.error(f"An error occured during calculation for event {_id}: {e}")
-            pass
+            logger.warning(f"Event_{_id}: An error occured during calculation for event {_id}: {e}")
+            print(f"There may be couples of error occured during calculation for event {_id}: {e}, please check runtime.log file")
+            continue
     
     return df_result, df_fitting, mw_output
 
@@ -177,7 +178,8 @@ def read_waveforms(path: Path, event_id: str) -> Stream:
             stread = read(w)
             stream += stread
         except Exception as e:
-            logger.error(f"Error reading waveform {w} for event {event_id}: {e} ")
+            logger.warning(f"Skip reading waveform {w} for event {event_id}: {e}, waveform error ")
+            continue
     
     return stream
 
@@ -196,7 +198,7 @@ def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[st
     Returns:
         Stream: A Stream object containing traces with instrument responses removed.
     """
-    st_removed=Stream()
+    st_removed = Stream()
     
     for tr in st:
         try:
@@ -231,7 +233,7 @@ def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[st
             st_removed+=rtr
             
         except Exception as e:
-            logger.error(f"Error process instrument removal in trace {tr.id}: {e}")
+            logger.warning(f"Error process instrument removal in trace {tr.id}: {e}")
             continue
             
     return st_removed
@@ -283,11 +285,12 @@ def rotate_component(st: Stream, azim: float, inc: float) -> Stream  :
     
     
     
-def window_trace(tr: Trace, P_arr: float, S_arr: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def window_trace(tr: Trace, P_arr: float, S_arr: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Windows seismic trace data around P, SV, and SH phase and extracts noise data.
 
     Args:
+    
         tr (Trace): A Trace object containing the seismic data.
         P_arr (float): The arrival time of the P phase (in seconds from the trace start).
         S_arr (float): The arrival time of the S phase (in seconds from the trace start).
@@ -297,7 +300,9 @@ def window_trace(tr: Trace, P_arr: float, S_arr: float) -> Tuple[np.ndarray, np.
             - P_data: The data windowed around the P phase in the L component.
             - SV_data: The data windowed around the S phase in the Q component.
             - SH_data: The data windowed around the S phase in the T component.
-            - noise_data: The data windowed around the noise period before the P phase in the L component.
+            - P_noise: The data windowed around the noise period before the P phase in the L component.
+            - SV_noise: The data windowed around the noise period before the P phase in the Q component.
+            - SH_noise: The data windowed around the noise period before the P phase in the T component.
     """
     # Extract the vertical, radial, and transverse components
     tr_L = tr.select(component='L')[0]
@@ -331,9 +336,11 @@ def window_trace(tr: Trace, P_arr: float, S_arr: float) -> Tuple[np.ndarray, np.
     noise_finish_index  = int(round( (P_arr - tr_L.stats.starttime )/ tr_L.stats.delta,4)) - \
                             int(round( NOISE_PADDING / tr_L.stats.delta,4))
 
-    noise_data = tr_L.data[noise_start_index : noise_finish_index + 1]
+    P_noise  = tr_L.data[noise_start_index : noise_finish_index + 1]
+    SV_noise = tr_Q.data[noise_start_index : noise_finish_index + 1]
+    SH_noise = tr_T.data[noise_start_index : noise_finish_index + 1]
 
-    return P_data, SV_data, SH_data, noise_data
+    return P_data, SV_data, SH_data, P_noise, SV_noise, SH_noise
 
 
 
@@ -462,7 +469,7 @@ def calculate_moment_magnitude(
             axs[0,1].set_title("Spectra Fitting Profile", fontsize='20')
             counter = 0
         except Exception as e:
-            logger.error(f"Error initializing figures for event {event_id}: {e}")
+            logger.warning(f"Event_{event_id}: Error initializing figures for event {event_id}: {e}")
             fig_statement = False
     
     # Predefined parameters 
@@ -534,43 +541,62 @@ def calculate_moment_magnitude(
         st2 = st.select(station = sta) # Select spesific seismograms from the stream
 
         if len(st2) < 3:
-            logger.warning(f"Not all components available for station {sta} to calculate event {event_id} moment magnitude")
+            logger.warning(f"Event_{event_id}: Not all components available for station {sta} to calculate event {event_id} moment magnitude")
             continue
             
-        st_removed = instrument_remove(st2, calibration_path, fig_path) # Remove instrument response
-        hypo_ref = [hypo_lat, hypo_lon , -1*hypo_depth]  # depth must be in negative notation
-        sta_ref = [sta_lat, sta_lon, sta_elev]
-        take_off, total_tt, inc_angle = ref.calculate_inc_angle(hypo_ref, sta_ref, LAYER_TOP, VELOCITY_VP) # Calculate the incidence angle at station
-        st_rotated = rotate_component(st_removed, azimuth, inc_angle) # do the component rotation from ZNE to LQT
+        # perform the instrument removal
+        try:
+            st_removed = instrument_remove(st2, calibration_path, fig_path)
+        except Exception as e:
+            logger.warning(f"Event_{event_id}: An error occured when correcting instrument for station {sta}: {e}")
+            continue
         
+        # perform station rotation form ZNE to LQT 
+        try:
+            try:
+                hypo_ref = [hypo_lat, hypo_lon , -1*hypo_depth]  # depth must be in negative notation
+                sta_ref = [sta_lat, sta_lon, sta_elev]
+                take_off, total_tt, inc_angle = ref.calculate_inc_angle(hypo_ref, sta_ref, LAYER_TOP, VELOCITY_VP) # Calculate the incidence angle at station
+            except Exception as e:
+                logger.warning(f"Event_{event_id}: An error occured when calculating incidence angle for sta {sta}.")
+            st_rotated = rotate_component(st_removed, azimuth, inc_angle) # do the component rotation from ZNE to LQT
+        except Exception as e:
+            logger.warning(f"Event_{event_id}: An error occured when rotating component for station {sta}.")
+ 
         # Window the trace
-        p_window_data, sv_window_data, sh_window_data, noise_window_data = window_trace(st_rotated, P_pick_time, S_pick_time)
+        p_window_data, sv_window_data, sh_window_data, p_noise_data, sv_noise_data, sh_noise_data = window_trace(st_rotated, P_pick_time, S_pick_time)
         
         # Check the data quality (SNR must be above or equal to 1)
-        if any(trace_snr(data, noise_window_data) <= 1 for data in [p_window_data, sv_window_data, sh_window_data]):
-            logger.warning(f"SNR below threshold for station {sta} to calculate moment magnitude")
+        if any(trace_snr(data, noise) <= 1 for data, noise in zip ([p_window_data, sv_window_data, sh_window_data], [p_noise_data, sv_noise_data, sh_noise_data])):
+            logger.warning(f"Event_{event_id}: SNR below threshold for station {sta} to calculate moment magnitude")
             continue
             
         # check sampling rate
         fs = 1 / st_rotated[0].stats.delta
         
-        # calculate source spectra
-        freq_P, spec_P = calculate_spectra(p_window_data, fs)
-        freq_SV, spec_SV = calculate_spectra(sv_window_data, fs)
-        freq_SH, spec_SH = calculate_spectra(sh_window_data, fs)
+        try:
+            # calculate source spectra
+            freq_P, spec_P = calculate_spectra(p_window_data, fs)
+            freq_SV, spec_SV = calculate_spectra(sv_window_data, fs)
+            freq_SH, spec_SH = calculate_spectra(sh_window_data, fs)
+            
+            # calculate the noise spectra
+            freq_N_P, spec_N_P   = calculate_spectra(p_noise_data, fs)
+            freq_N_SV, spec_N_SV = calculate_spectra(sv_noise_data, fs)
+            freq_N_SH, spec_N_SH = calculate_spectra(sh_noise_data, fs)
         
-        # calculate the noise spectra
-        freq_N, spec_N = calculate_spectra(noise_window_data, fs)
-        
+        except Exception as e:
+            logger.warning(f"Event_{event_id}: An error occured during spectra calculation for station {sta}: {e}")
+            continue
+
         # fitting the spectrum, find the optimal value of Omega_O, corner frequency and Q using grid search algorithm
         try:
             fit_P = fit.fit_spectrum_stochastic(freq_P, spec_P, abs(float(P_pick_time - origin_time)), F_MIN, F_MAX)
             fit_SV = fit.fit_spectrum_stochastic(freq_SV, spec_SV, abs(float(S_pick_time - origin_time)), F_MIN, F_MAX)
             fit_SH= fit.fit_spectrum_stochastic(freq_SH, spec_SH, abs(float(S_pick_time - origin_time)), F_MIN, F_MAX)
         except Exception as e:
-            logger.error(f"Error during spectral fitting for event {event_id}: {e}")
+            logger.warning(f"Event_{event_id}: Error during spectral fitting for event {event_id}: {e}")
             continue
-
         if None in [fit_SV, fit_SH, fit_P]:
             continue
 
@@ -612,7 +638,9 @@ def calculate_moment_magnitude(
             freq_P, spec_P = window_band(freq_P, spec_P, f_min_plot, f_max_plot)
             freq_SV, spec_SV = window_band(freq_SV, spec_SV, f_min_plot, f_max_plot)
             freq_SH, spec_SH = window_band(freq_SH, spec_SH, f_min_plot, f_max_plot)
-            freq_N, spec_N = window_band(freq_N, spec_N, f_min_plot, f_max_plot)
+            freq_N_P, spec_N_P = window_band(freq_N_P, spec_N_P, f_min_plot, f_max_plot)
+            freq_N_SV, spec_N_SV = window_band(freq_N_SV, spec_N_SV, f_min_plot, f_max_plot)
+            freq_N_SH, spec_N_SH = window_band(freq_N_SH, spec_N_SH, f_min_plot, f_max_plot)
 
             # dinamic window parameter
             s_p_time = float(S_pick_time - P_pick_time)    
@@ -680,7 +708,7 @@ def calculate_moment_magnitude(
                 # plot the spectra (P, SV, SH and Noise spectra)
                 # 1. For P spectra
                 axs[counter][1].loglog(freq_P, spec_P, color='black', label='P spectra')
-                axs[counter][1].loglog(freq_N, spec_N, color='gray', label='Noise spectra')
+                axs[counter][1].loglog(freq_N_P, spec_N_P, color='gray', label='Noise spectra')
                 axs[counter][1].loglog(x_fit_P, y_fit_P, 'b-', label='Fitted P Spectra')
                 axs[counter][1].set_title("{}_BH{}".format(tr_L.stats.station, tr_L.stats.component), loc="right",va='center')
                 axs[counter][1].legend()
@@ -690,7 +718,7 @@ def calculate_moment_magnitude(
                
                 # 2. For SV spectra
                 axs[counter+1][1].loglog(freq_SV, spec_SV, color='black', label='SV spectra')
-                axs[counter+1][1].loglog(freq_N, spec_N, color='gray', label='Noise spectra')
+                axs[counter+1][1].loglog(freq_N_SV, spec_N_SV, color='gray', label='Noise spectra')
                 axs[counter+1][1].loglog(x_fit_SV, y_fit_SV, 'b-', label='Fitted SV Spectra')
                 axs[counter+1][1].set_title("{}_BH{}".format(tr_Q.stats.station, tr_Q.stats.component), loc="right",va='center')
                 axs[counter+1][1].legend()
@@ -700,7 +728,7 @@ def calculate_moment_magnitude(
                 
                 # 3. For SH spectra
                 axs[counter+2][1].loglog(freq_SH, spec_SH, color='black', label='SH spectra')
-                axs[counter+2][1].loglog(freq_N, spec_N, color='gray', label='Noise spectra')
+                axs[counter+2][1].loglog(freq_N_SH, spec_N_SH, color='gray', label='Noise spectra')
                 axs[counter+2][1].loglog(x_fit_SH, y_fit_SH, 'b-', label='Fitted SH Spectra')
                 axs[counter+2][1].set_title("{}_BH{}".format(tr_T.stats.station, tr_T.stats.component), loc="right",va='center')
                 axs[counter+2][1].legend()
@@ -709,7 +737,8 @@ def calculate_moment_magnitude(
 
                 counter +=3
             except Exception as e:
-                logger.error(f"Failed to plot the fitting spectral for event {event_id} : {e}") 
+                logger.warning(f"Event_{event_id}: Failed to plot the fitting spectral for event {event_id} : {e}")
+                continue
 
         # calculate the moment magnitude
         try:
@@ -727,21 +756,21 @@ def calculate_moment_magnitude(
                     (R_PATTERN_S)                                                   # should it be multipled by 2 ??
             
             # calculate source radius
-            r_P = k_P * velocity_P * f_c_P # result in meter, times 3 because it is a three components
-            r_S = 2 * k_S * velocity_S /(f_c_SV + f_c_SH) # result in meter, times 3 because it is a three components
+            r_P = k_P * velocity_P * f_c_P
+            r_S = 2 * k_S * velocity_S /(f_c_SV + f_c_SH)
             
             # extend the moments object holder to calculate the moment magnitude
-            moments.extend([M_0_P, M_0_S]) 
+            moments.extend([M_0_P, M_0_S])
             
             # calculate corner frequency mean
             corner_freq_S = (f_c_SV + f_c_SH)/2
             corner_frequencies.extend([f_c_P, corner_freq_S])
             
             # extend the source radius
-            source_radius.extend([r_P, r_S])        
+            source_radius.extend([r_P, r_S])
      
         except Exception as e:
-            logger.error(f"Failed to calculate seismic moment for event {event_id} : {e}")
+            logger.warning(f" Event_{event_id}: Failed to calculate seismic moment for event {event_id} : {e}")
             continue
             
     # Calculate the seismic moment viabnv  basic statistics.
