@@ -204,7 +204,7 @@ def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[st
         try:
             # Construct the calibration file
             sta, comp = tr.stats.station, tr.stats.component
-            inv_path = calibration_path.joinpath(f"RESP.ML.{sta}..BH{comp}")
+            inv_path = calibration_path.joinpath(f"RESP.KJ.{sta}..BH{comp}")
             
             # Read the calibration file
             inv = read_inventory(inv_path, format='RESP')
