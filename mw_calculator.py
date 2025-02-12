@@ -160,27 +160,27 @@ def get_user_input () -> Tuple[int, int, str, bool]:
 
 
 
-def read_waveforms(path: Path, event_id: str) -> Stream:
+def read_waveforms(path: Path, event_id: int, station:str) -> Stream:
     """
     Read waveforms file (.mseed) from the specified path and event id.
 
     Args:
         path (Path): Parent path of separated by id waveforms directory.
-        event_id (float): Unique identifier for the earthquake event.
-
+        event_id (int): Unique identifier for the earthquake event.
+        station (str): Station name.
     Returns:
         Stream: A Stream object containing all the waveforms from specific event id.
     """
     
     stream = Stream()
-    for w in glob.glob(os.path.join(path.joinpath(f"{event_id}"), '*.mseed'), recursive = True):
+    for w in glob.glob(os.path.join(path.joinpath(f"{event_id}"), f"*{station}*.mseed"), recursive = True):
         try:
             stread = read(w)
             stream += stread
         except Exception as e:
             logger.warning(f"Skip reading waveform {w} for event {event_id}: {e}, waveform error ")
             continue
-    
+            
     return stream
 
 
@@ -204,7 +204,7 @@ def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[st
         try:
             # Construct the calibration file
             sta, comp = tr.stats.station, tr.stats.component
-            inv_path = calibration_path.joinpath(f"RESP.KJ.{sta}..BH{comp}")
+            inv_path = calibration_path.joinpath(f"RESP.ML.{sta}..BH{comp}")
             
             # Read the calibration file
             inv = read_inventory(inv_path, format='RESP')
@@ -435,7 +435,7 @@ def calculate_moment_magnitude(
         pick_df: pd.DataFrame, 
         station: pd.DataFrame, 
         calibration_path: Path, 
-        event_id: str, 
+        event_id: int, 
         fig_path: Path, 
         fig_statement: bool = False
         ) -> Tuple[Dict[str, str], Dict[str,List]]:
@@ -449,7 +449,7 @@ def calculate_moment_magnitude(
         pick_df (pd.DataFrame): DataFrame containing pick information (arrival times).
         station (pd.DataFrame): DataFrame containing station information (latitude, longitude, elevation).
         calibration_path (Path): Path to the calibration files for instrument response removal.
-        event_id (str): Unique identifier for the earthquake event.
+        event_id (int): Unique identifier for the earthquake event.
         fig_path (Path): Path to save the generated figures.
         fig_statement (bool): Whether to generate and save figures (default is False).
 
@@ -512,10 +512,6 @@ def calculate_moment_magnitude(
             DENSITY_value = DENSITY[layer]
     if not velocity_P:
         raise ValueError ("Hypo depth not within the defined layers.")
-
-    # Read waveforms
-    stream = read_waveforms(wave_path, event_id)
-    st = stream.copy()
     
     # Start spectrum fitting and magnitude estimation
     for sta in list(pick_df.get("Station")):
@@ -537,13 +533,14 @@ def calculate_moment_magnitude(
             f"{pick_info.Year}-{int(pick_info.Month):02d}-{int(pick_info.Day):02d}T"
             f"{int(pick_info.Hour):02d}:{int(pick_info.Minutes_S):02d}:{float(pick_info.S_Arr_Sec):012.9f}"
         )
-
-        st2 = st.select(station = sta) # Select spesific seismograms from the stream
-
+        
+        # read the waveform 
+        st = read_waveforms(wave_path, event_id, sta)
+        st2 = st.copy()
         if len(st2) < 3:
             logger.warning(f"Event_{event_id}: Not all components available for station {sta} to calculate event {event_id} moment magnitude")
             continue
-            
+        
         # perform the instrument removal
         try:
             st_removed = instrument_remove(st2, calibration_path, fig_path)
@@ -604,7 +601,7 @@ def calculate_moment_magnitude(
         Omega_0_P,  Q_factor_p,  f_c_P,  err_P,  x_fit_P,  y_fit_P  = fit_P
         Omega_0_SV, Q_factor_SV, f_c_SV, err_SV, x_fit_SV, y_fit_SV = fit_SV
         Omega_0_SH, Q_factor_SH, f_c_SH, err_SH, x_fit_SH, y_fit_SH = fit_SH
-            
+
         # append the fitting spectrum output to the holder list
         Omega_0_P  = np.sqrt(Omega_0_P)
         Omega_0_SV = np.sqrt(Omega_0_SV)
@@ -761,7 +758,7 @@ def calculate_moment_magnitude(
             
             # extend the moments object holder to calculate the moment magnitude
             moments.extend([M_0_P, M_0_S])
-            
+
             # calculate corner frequency mean
             corner_freq_S = (f_c_SV + f_c_SH)/2
             corner_frequencies.extend([f_c_P, corner_freq_S])
