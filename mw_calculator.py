@@ -5,6 +5,7 @@ Created on Thu Dec 15 19:32:03 2022
 
 @author : ARHAM ZAKKI EDELO
 @contact: edelo.arham@gmail.com
+@github : https://github.com/bgjx
 """
 
 import os, glob, subprocess, sys, warnings
@@ -29,15 +30,15 @@ import fitting_spectral as fit
 print('''
 Python code to calculate moment magnitude
 
-Before you run this program, make sure you have changed all the path correctly.      
+Before you run this program, make sure you have changed all the file path correctly.      
       ''')
 
 # Global Parameters
 #============================================================================================
 
 # instrument correction parameters
-WATER_LEVEL = 0                      # water level 
-PRE_FILTER = [0.1, 0.75, 29.25, 30] # these values need to be customized for a specific bandwidth
+WATER_LEVEL = 0                      # water level to prevent low frequency clipping, set 0 if you apply filter
+PRE_FILTER = [0.1, 0.75, 29.25, 30]  # these values need to be customized for a specific bandwidth
 
 # plotting parameters
 # static window parameter 
@@ -87,7 +88,7 @@ def start_calculate(
         print("Process the program ....\n\n")
         pass
 
-    # setting logger for debugging 
+    # setting logger for debugging, all error are set to warning level to keep the sequence
     logger.remove()
     logger.add("runtime.log", level="WARNING", backtrace=True, diagnose=True)
     
@@ -101,7 +102,7 @@ def start_calculate(
 
     # initiate dataframe for magnitude calculation results
     df_result   = pd.DataFrame(
-                        columns = ["ID", "Fc", "Fc_std", "Mw", "Mw_std", "Src_rad(m)", "Src_rad_std", "Stress_drop(bar)", "Stress_drop_std"] 
+                        columns = ["ID", "Fc", "Fc_std", "Moment_avg", "Moment_std", "Src_rad(m)", "Src_rad_std", "Stress_drop(bar)", "Mw"] 
                         )
     df_fitting  = pd.DataFrame(
                         columns = ["ID", "Station", "F_corner_P", "F_corner_SV", "F_corner_SH", "Qfactor_P", "Qfactor_SV", "Qfactor_SH", "Omega_0_P(nms)", "Omega_0_SV(nms)",  "Omega_0_SH(nms)", "RMS_e_P(nms)", "RMS_e_SV(nms)", "RMS_e_SH(nms)"] 
@@ -744,17 +745,12 @@ def calculate_moment_magnitude(
             omega_S = (Omega_0_SV**2 + Omega_0_SH**2)**0.5
          
             ## calculate seismic moment
-            M_0_P = 4.0 * np.pi * DENSITY_value * (velocity_P ** 3) * source_distance * \
-                    omega_P / \
-                    (R_PATTERN_P)                                                   # should it be multipled by 2 ??
-                    
-            M_0_S = 4.0 * np.pi * DENSITY_value * (velocity_S ** 3) * source_distance * \
-                    omega_S / \
-                    (R_PATTERN_S)                                                   # should it be multipled by 2 ??
-            
+            M_0_P = (4.0 * np.pi * DENSITY_value * (velocity_P ** 3) * source_distance * omega_P) / (R_PATTERN_P)
+            M_0_S = (4.0 * np.pi * DENSITY_value * (velocity_S ** 3) * source_distance * omega_S) / (R_PATTERN_S)
+
             # calculate source radius
-            r_P = k_P * velocity_P * f_c_P
-            r_S = 2 * k_S * velocity_S /(f_c_SV + f_c_SH)
+            r_P = (k_P * velocity_P)/f_c_P
+            r_S = (2 * k_S * velocity_S)/(f_c_SV + f_c_SH)
             
             # extend the moments object holder to calculate the moment magnitude
             moments.extend([M_0_P, M_0_S])
@@ -787,28 +783,23 @@ def calculate_moment_magnitude(
     
     # Calculate the stress drop of the event based on the average moment and source radius
     stress_drop = ((7 * moment) / (16 * (source_rad * 0.001) ** 3))*1e-14
-    stress_drop_std = np.sqrt((stress_drop ** 2) * (((moment_std ** 2) / (moment ** 2)) + \
-    (9 * source_rad * source_radius_std ** 2)))   
         
     # Calculate the final moment magnitude
     Mw  = ((2.0 / 3.0) * np.log10(moment)) - 6.07
-    
-    # calculate moment magnitude from seismic moment standard deviation 
-    Mw_std = 2.0 / 3.0 * moment_std / (moment * np.log(10))
  
     results = {"ID":[f"{event_id}"], 
-                "Fc":[f"{corner_frequency}"],
-                "Fc_std":[f"{corner_frequency_std}"],
-                "Mw":[f"{Mw}"],
-                "Mw_std":[f"{Mw_std}"],
-                "Src_rad(m)":[f"{source_rad}"],
-                "Src_rad_std":[f"{source_radius_std}"],
-                "Stress_drop(bar)":[f"{stress_drop}"],
-                "Stress_drop_std":[f"{stress_drop_std}"]
+                "Fc":[f"{corner_frequency:.3f}"],
+                "Fc_std":[f"{corner_frequency_std:.3f}"],
+                "Moment_avg":[f"{moment:.3e}"],
+                "Moment_std":[f"{moment_std:.3e}"],
+                "Src_rad(m)":[f"{source_rad:.3f}"],
+                "Src_rad_std":[f"{source_radius_std:.3f}"],
+                "Stress_drop(bar)":[f"{stress_drop:.3f}"],
+                "Mw":[f"{Mw:.3f}"]
                 }
                 
     if fig_statement : 
-        fig.suptitle(f"Event {event_id} Spesctral Fitting Profile", fontsize='24', fontweight='bold')
+        fig.suptitle(f"Event {event_id} {Mw:.3f}Mw Spesctral Fitting Profile", fontsize='24', fontweight='bold')
         #plt.title("Event {} Spectral Fitting Profile".format(ID), fontsize='20')
         plt.savefig(fig_path.joinpath(f"event_{event_id}.png"))
     
@@ -818,13 +809,13 @@ def calculate_moment_magnitude(
 
 def main():
     # initialize input and output path
-    wave_path       = Path(r"G:\SEML\DATA TRIMMING\EVENT DATA TRIM\ALL COMBINED")                           # trimmed waveform location
-    hypo_input      = Path(r"G:\SEML\CATALOG HYPOCENTER\catalog\hypo_reloc.xlsx")                           # relocated catalog
-    sta_input       = Path(r"G:\SEML\STATION AND VELOCITY DATA\SEML_station.xlsx")                          # station file
-    pick_input      = Path(r"G:\SEML\CATALOG HYPOCENTER\catalog\catalog_picking.xlsx")                      # catalog picking
-    calibration     = Path(r"G:\SEML\SEISMOMETER INSTRUMENT CORRECTION\CALIBRATION")                        # calibration file
-    mw_result       = Path(r"G:\SEML\MAGNITUDE CALCULATION\MW")                                             # mw result location
-    fig_output      = Path(r"G:\SEML\MAGNITUDE CALCULATION\MW\fig_out")                                     # saved figure location
+    wave_path       = Path(r"..\waveforms")                           # trimmed waveform location
+    hypo_input      = Path(r"..\catalog\hypo_catalog.xlsx")                           # relocated catalog
+    sta_input       = Path(r"..\catalog\station.xlsx")                          # station file
+    pick_input      = Path(r"..\catalog\picking_catalog.xlsx")                      # catalog picking
+    calibration     = Path(r"..\calibration file")                        # calibration file
+    mw_result       = Path(r"..\mw result")                                             # mw result location
+    fig_output      = Path(r"..\mw result\fig out")                                     # saved figure location
     
     # Call the function to start calculating moment magnitude
     mw_result_df, mw_fitting_df, output_name = start_calculate(wave_path, hypo_input, sta_input, pick_input, calibration, fig_output)
