@@ -35,7 +35,6 @@ Before you run this program, make sure you have changed all the file path correc
 
 # Global Parameters
 #============================================================================================
-
 # instrument correction parameters
 WATER_LEVEL = 0                      # water level to prevent low frequency clipping, set 0 if you apply filter
 PRE_FILTER = [0.1, 0.75, 29.25, 30]  # these values need to be customized for a specific bandwidth
@@ -55,6 +54,8 @@ NOISE_PADDING = 0.2
 # setting frequency range for spectral fitting (default spectral f-band frequency range)
 F_MIN = 0.75
 F_MAX = 30
+#============================================================================================
+
 
 
 def start_calculate(
@@ -88,9 +89,9 @@ def start_calculate(
         print("Process the program ....\n\n")
         pass
 
-    # setting logger for debugging, all error are set to warning level to keep the sequence
+    # setting logger for debugging, all errors are set to warning level to keep the sequence.
     logger.remove()
-    logger.add("runtime.log", level="WARNING", backtrace=True, diagnose=True)
+    logger.add("mw_calculator_runtime.log", level="WARNING", backtrace=True, diagnose=True)
     
     # Get the user input.
     id_start, id_end, mw_output, fig_state = get_user_input()
@@ -130,8 +131,8 @@ def start_calculate(
             df_fitting = pd.concat([df_fitting, mw_fitting_result], ignore_index = True)
             
         except Exception as e:
-            logger.warning(f"Event_{_id}: An error occured during calculation for event {_id}: {e}")
-            print(f"There may be couples of error occured during calculation for event {_id}: {e}, please check runtime.log file")
+            logger.warning(f"Event_{_id}: An error occured during calculation for event {_id}, {e}.")
+            print(f"There may be couples of error occured during calculation for event {_id}, please check runtime.log file")
             continue
     
     return df_result, df_fitting, mw_output
@@ -179,7 +180,7 @@ def read_waveforms(path: Path, event_id: int, station:str) -> Stream:
             stread = read(w)
             stream += stread
         except Exception as e:
-            logger.warning(f"Skip reading waveform {w} for event {event_id}: {e}, waveform error ")
+            logger.warning(f"Skip reading waveform {w} for event {event_id}: {e}.")
             continue
             
     return stream
@@ -234,7 +235,7 @@ def instrument_remove (st: Stream, calibration_path: Path, fig_path: Optional[st
             st_removed+=rtr
             
         except Exception as e:
-            logger.warning(f"Error process instrument removal in trace {tr.id}: {e}")
+            logger.warning(f"Error process instrument removal in trace {tr.id}: {e}.")
             continue
             
     return st_removed
@@ -457,10 +458,10 @@ def calculate_moment_magnitude(
     Returns:
         Tuple[Dict[str, str], Dict[str, List]]:
             - results (Dict[str, str]): A Dictionary containing calculated moment magnitude and related metrics.
-            - fitting_result (Dict[str, List]): A dictionary Detailed fitting results for each station.
+            - fitting_result (Dict[str, List]): A dictionary of detailed fitting results for each station.
     """
     
-    # Initialize figure if needed
+    # initialize figure if needed
     if fig_statement:
         try:
             num_stations = len(pick_df['Station'].unique())
@@ -473,7 +474,7 @@ def calculate_moment_magnitude(
             logger.warning(f"Event_{event_id}: Error initializing figures for event {event_id}: {e}")
             fig_statement = False
     
-    # Predefined parameters 
+    # predefined parameters 
     R_PATTERN_P = 0.440 # P phase radiation pattern
     R_PATTERN_S = 0.600 # S phase radiation pattern
     k_P = 0.32 # kappa parameter for P phase
@@ -483,6 +484,7 @@ def calculate_moment_magnitude(
     VELOCITY_VS = [2.30, 2.53, 2.53, 3.44, 4.44]                                    # km/s
     DENSITY     = [ 2375.84,  2465.34, 2529.08, 2750.80, 2931.80]                   # kg/m3
     
+    # build object holder
     moments, corner_frequencies, source_radius = [], [], []
     fitting_result = {
         "ID":[],
@@ -501,11 +503,11 @@ def calculate_moment_magnitude(
         "RMS_e_SH(nms)":[]
     }
 
-    # Get hypocenter details
+    # get hypocenter details
     origin_time = UTCDateTime(f"{hypo_df.Year.iloc[0]}-{int(hypo_df.Month.iloc[0]):02d}-{int(hypo_df.Day.iloc[0]):02d}T{int(hypo_df.Hour.iloc[0]):02d}:{int(hypo_df.Minute.iloc[0]):02d}:{float(hypo_df.T0.iloc[0]):012.9f}") 
     hypo_lat, hypo_lon , hypo_depth =  hypo_df.Lat.iloc[0], hypo_df.Lon.iloc[0], hypo_df.Depth.iloc[0]
 
-    # Find the correct velocity and DENSITY value for the spesific layer depth
+    # find the correct velocity and DENSITY value for the spesific layer depth
     for layer, (top, bottom) in enumerate(LAYER_TOP):
         if (top*1000)   <= hypo_depth <= (bottom*1000):
             velocity_P = VELOCITY_VP[layer]*1000  # velocity in m/s
@@ -514,17 +516,17 @@ def calculate_moment_magnitude(
     if not velocity_P:
         raise ValueError ("Hypo depth not within the defined layers.")
     
-    # Start spectrum fitting and magnitude estimation
+    # start spectrum fitting and magnitude estimation
     for sta in list(pick_df.get("Station")):
-        # Get the station coordinat
+        # get the station coordinat
         sta_xyz = station[station.Stations == sta]
         sta_lat, sta_lon, sta_elev = sta_xyz.Lat.iloc[0], sta_xyz.Lon.iloc[0], sta_xyz.Elev.iloc[0]
         
-        # Calculate the source distance and the azimuth (hypo to station azimuth)
+        # calculate the source distance and the azimuth (hypo to station azimuth)
         epicentral_distance, azimuth, back_azimuth = gps2dist_azimuth(hypo_lat, hypo_lon, sta_lat, sta_lon)
         source_distance = np.sqrt(epicentral_distance**2 + (hypo_depth + sta_elev)**2)
         
-        # Get the pick_df data for P arrival and S arrival
+        # get the pick_df data for P arrival and S arrival
         pick_info = pick_df[pick_df.Station == sta].iloc[0]
         P_pick_time = UTCDateTime(
             f"{pick_info.Year}-{int(pick_info.Month):02d}-{int(pick_info.Day):02d}T"
@@ -584,7 +586,7 @@ def calculate_moment_magnitude(
             freq_N_SH, spec_N_SH = calculate_spectra(sh_noise_data, fs)
         
         except Exception as e:
-            logger.warning(f"Event_{event_id}: An error occured during spectra calculation for station {sta}: {e}")
+            logger.warning(f"Event_{event_id}: An error occured during spectra calculation for station {sta}, {e}.")
             continue
 
         # fitting the spectrum, find the optimal value of Omega_O, corner frequency and Q using grid search algorithm
@@ -593,7 +595,7 @@ def calculate_moment_magnitude(
             fit_SV = fit.fit_spectrum_stochastic(freq_SV, spec_SV, abs(float(S_pick_time - origin_time)), F_MIN, F_MAX)
             fit_SH= fit.fit_spectrum_stochastic(freq_SH, spec_SH, abs(float(S_pick_time - origin_time)), F_MIN, F_MAX)
         except Exception as e:
-            logger.warning(f"Event_{event_id}: Error during spectral fitting for event {event_id}: {e}")
+            logger.warning(f"Event_{event_id}: Error during spectral fitting for event {event_id}, {e}.")
             continue
         if None in [fit_SV, fit_SH, fit_P]:
             continue
@@ -735,7 +737,7 @@ def calculate_moment_magnitude(
 
                 counter +=3
             except Exception as e:
-                logger.warning(f"Event_{event_id}: Failed to plot the fitting spectral for event {event_id} : {e}")
+                logger.warning(f"Event_{event_id}: Failed to plot the fitting spectral for station {sta}, {e}.")
                 continue
 
         # calculate the moment magnitude
@@ -747,7 +749,7 @@ def calculate_moment_magnitude(
             ## calculate seismic moment
             M_0_P = (4.0 * np.pi * DENSITY_value * (velocity_P ** 3) * source_distance * omega_P) / (R_PATTERN_P)
             M_0_S = (4.0 * np.pi * DENSITY_value * (velocity_S ** 3) * source_distance * omega_S) / (R_PATTERN_S)
-
+            
             # calculate source radius
             r_P = (k_P * velocity_P)/f_c_P
             r_S = (2 * k_S * velocity_S)/(f_c_SV + f_c_SH)
@@ -763,7 +765,7 @@ def calculate_moment_magnitude(
             source_radius.extend([r_P, r_S])
      
         except Exception as e:
-            logger.warning(f" Event_{event_id}: Failed to calculate seismic moment for event {event_id} : {e}")
+            logger.warning(f" Event_{event_id}: Failed to calculate seismic moment for event {event_id}, {e}.")
             continue
             
     # Calculate the seismic moment viabnv  basic statistics.
